@@ -1,5 +1,7 @@
 #!/usr/bin/env perl
 
+use feature ":5.10";
+
 use Number::Latin;
 use Text::CSV::Simple;
 use Curses;
@@ -95,40 +97,60 @@ sub new() {
   $mode{normal} = sub {
     my ($cui, $k) = @_;
 
-    if ($k eq 'l') {
-      $grid->next_cell();
-    } elsif ($k eq 'h') {
-      $grid->prev_cell() unless $grid->{-cell_idx} == 1;
-    } elsif ($k eq 'j') {
-      $grid->next_row();
-    } elsif ($k eq 'k') {
-      $grid->prev_row();
-    } elsif ($k eq "\cF") {
-      $grid->grid_pagedown(1);
-    } elsif ($k eq "\cB") {
-      $grid->grid_pageup(1);
-    } elsif ($k eq '>') {
-      my $cell = $grid->get_foused_cell();
-      $grid->set_cell_width($cell, $cell->{-width} + 5);
-      $grid->draw();
-    } elsif ($k eq '<') {
-      my $cell = $grid->get_foused_cell();
-      $grid->set_cell_width($cell, max(0, $cell->{-width} - 5));
-      $grid->draw();
-    } elsif ($k eq '=') {
-      delete $cui->{-bindings}{""};
-      $cui->set_binding(
-        sub {
-          delete $cui->{-bindings}{KEY_ENTER()};
-          $cui->set_binding($mode{normal}, "");
-          $grid->get_foused_cell()->cursor_to_home();
-        },
-        KEY_ENTER()
-      );
+    given ($k) {
+      when ('l') { $grid->next_cell(); }
+      when ('h') { $grid->prev_cell() unless $grid->{-cell_idx} == 1; }
+      when ('j') { $grid->next_row(); }
+      when ('k') { $grid->prev_row(); }
+      when ("\cF") { $grid->grid_pagedown(1); }
+      when ("\cB") { $grid->grid_pageup(1); }
+      when ('>') {
+        my $cell = $grid->get_foused_cell();
+        $grid->set_cell_width($cell, $cell->{-width} + 5);
+        $grid->draw();
+      }
+      when ('<') {
+        my $cell = $grid->get_foused_cell();
+        $grid->set_cell_width($cell, max(0, $cell->{-width} - 5));
+        $grid->draw();
+      }
+      when ('=') {
+        delete $cui->{-bindings}{""};
+        $cui->set_binding(
+          sub {
+            delete $cui->{-bindings}{KEY_ENTER()};
+            $cui->set_binding($mode{normal}, "");
+            $grid->get_foused_cell()->cursor_to_home();
+          },
+          KEY_ENTER()
+        );
+      }
     }
   };
 
+  sub mouse1() {
+    my ($grid, $event, $x, $y) = @_;
+
+    my $row = $grid->row_for_index($y - 1);
+    my $cells = $grid->{_cells};
+    my $xoffset = 0;
+    my $cell;
+
+    for my $i (0 .. $#{$cells}) {
+      $cell = $grid->id2cell($cells->[$i]);
+      $xoffset += $cell->current_width + 1;
+      last if ($x < $xoffset);
+    }
+
+    $grid->focus_row($row, undef, 0);
+    $grid->focus_cell($cell, undef, 0);
+
+    $cell->cursor_to_home();
+    $cell->draw();
+  }
+
   $cui->set_binding($mode{normal}, "");
+  $grid->set_mouse_binding(\&mouse1, BUTTON1_CLICKED());
 
   for my $id(0 .. 255 ) {
     $grid->add_cell("cell".$id,
